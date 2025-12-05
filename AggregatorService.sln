@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34723.18
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AggregatorService", "AggregatorService\AggregatorService.csproj", "{EDDF695F-55F3-4410-AADB-9D2A50CFA521}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AggregatorService.Tests", "AggregatorService.Tests\AggregatorService.Tests.csproj", "{BDB5F675-A387-46E1-9B12-1E4624097563}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EDDF695F-55F3-4410-AADB-9D2A50CFA521}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDDF695F-55F3-4410-AADB-9D2A50CFA521}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDDF695F-55F3-4410-AADB-9D2A50CFA521}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EDDF695F-55F3-4410-AADB-9D2A50CFA521}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BDB5F675-A387-46E1-9B12-1E4624097563}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BDB5F675-A387-46E1-9B12-1E4624097563}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BDB5F675-A387-46E1-9B12-1E4624097563}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BDB5F675-A387-46E1-9B12-1E4624097563}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {81DB4FE5-BB59-44DC-A967-DDAD21EB95C5}
+	EndGlobalSection
+EndGlobal
