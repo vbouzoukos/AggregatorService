@@ -6,7 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 
-namespace AggregatorService.Tests.Services.Providers
+namespace AggregatorService.Tests.Services.Provider
 {
     public class WeatherProviderTests
     {

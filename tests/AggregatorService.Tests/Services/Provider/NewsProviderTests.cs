@@ -6,7 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 
-namespace AggregatorService.Tests.Services.Providers
+namespace AggregatorService.Tests.Services.Provider
 {
     public class NewsProviderTests
     {
@@ -22,7 +22,7 @@ namespace AggregatorService.Tests.Services.Providers
             configuration = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: true)
-                .AddJsonFile("appsettings.Secret.json", optional: false)
+                .AddJsonFile("appsettings.Secret.json", optional: true)
                 .AddEnvironmentVariables()
                 .Build();
 
@@ -50,18 +50,6 @@ namespace AggregatorService.Tests.Services.Providers
                 cacheService,
                 statisticsService,
                 loggerMock.Object);
-        }
-
-        /// <summary>
-        /// Creates default parameters with date range required by NewsAPI /everything endpoint
-        /// </summary>
-        private static Dictionary<string, string> CreateDefaultParameters()
-        {
-            return new Dictionary<string, string>
-            {
-                { "from", DateTime.UtcNow.AddDays(-7).ToString("yyyy-MM-dd") },
-                { "to", DateTime.UtcNow.ToString("yyyy-MM-dd") }
-            };
         }
 
         #region CanHandle Tests
@@ -173,8 +161,7 @@ namespace AggregatorService.Tests.Services.Providers
             // Arrange
             var request = new AggregationRequest
             {
-                Query = "technology",
-                Parameters = CreateDefaultParameters()
+                Query = "technology"
             };
 
             // Act
@@ -182,12 +169,9 @@ namespace AggregatorService.Tests.Services.Providers
 
             // Assert
             Assert.Equal("News", result.Provider);
+            Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
+            Assert.NotNull(result.Data);
             Assert.True(result.ResponseTime.TotalMilliseconds > 0);
-            // Note: Free tier may return errors due to rate limits or restrictions
-            if (result.IsSuccess)
-            {
-                Assert.NotNull(result.Data);
-            }
         }
 
         [Fact]
@@ -197,8 +181,7 @@ namespace AggregatorService.Tests.Services.Providers
             var request = new AggregationRequest
             {
                 Query = "football",
-                Language = "en",
-                Parameters = CreateDefaultParameters()
+                Language = "en"
             };
 
             // Act
@@ -206,11 +189,8 @@ namespace AggregatorService.Tests.Services.Providers
 
             // Assert
             Assert.Equal("News", result.Provider);
-            // Note: Free tier may return errors due to rate limits or restrictions
-            if (result.IsSuccess)
-            {
-                Assert.NotNull(result.Data);
-            }
+            Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
+            Assert.NotNull(result.Data);
         }
 
         [Fact]
@@ -220,8 +200,7 @@ namespace AggregatorService.Tests.Services.Providers
             var request = new AggregationRequest
             {
                 Query = "sports",
-                Sort = SortOption.Newest,
-                Parameters = CreateDefaultParameters()
+                Sort = SortOption.Newest
             };
 
             // Act
@@ -229,10 +208,46 @@ namespace AggregatorService.Tests.Services.Providers
 
             // Assert
             Assert.Equal("News", result.Provider);
-            if (result.IsSuccess)
+            Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
+            Assert.NotNull(result.Data);
+        }
+
+        [Fact]
+        public async Task FetchAsync_WithSortOldest_AppliesSortMapping()
+        {
+            // Arrange
+            var request = new AggregationRequest
             {
-                Assert.NotNull(result.Data);
-            }
+                Query = "science",
+                Sort = SortOption.Oldest
+            };
+
+            // Act
+            var result = await provider.FetchAsync(request, CancellationToken.None);
+
+            // Assert
+            Assert.Equal("News", result.Provider);
+            Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
+            Assert.NotNull(result.Data);
+        }
+
+        [Fact]
+        public async Task FetchAsync_WithSortRelevance_AppliesSortMapping()
+        {
+            // Arrange
+            var request = new AggregationRequest
+            {
+                Query = "business",
+                Sort = SortOption.Relevance
+            };
+
+            // Act
+            var result = await provider.FetchAsync(request, CancellationToken.None);
+
+            // Assert
+            Assert.Equal("News", result.Provider);
+            Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
+            Assert.NotNull(result.Data);
         }
 
         [Fact]
@@ -242,8 +257,7 @@ namespace AggregatorService.Tests.Services.Providers
             var request = new AggregationRequest
             {
                 Query = "music",
-                Sort = SortOption.Popularity,
-                Parameters = CreateDefaultParameters()
+                Sort = SortOption.Popularity
             };
 
             // Act
@@ -251,10 +265,53 @@ namespace AggregatorService.Tests.Services.Providers
 
             // Assert
             Assert.Equal("News", result.Provider);
-            if (result.IsSuccess)
+            Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
+            Assert.NotNull(result.Data);
+        }
+
+        [Fact]
+        public async Task FetchAsync_WithDateRange_ReturnsFilteredData()
+        {
+            // Arrange
+            var request = new AggregationRequest
             {
-                Assert.NotNull(result.Data);
-            }
+                Query = "technology",
+                Parameters = new Dictionary<string, string>
+                {
+                    { "from", DateTime.UtcNow.AddDays(-7).ToString("yyyy-MM-dd") },
+                    { "to", DateTime.UtcNow.ToString("yyyy-MM-dd") }
+                }
+            };
+
+            // Act
+            var result = await provider.FetchAsync(request, CancellationToken.None);
+
+            // Assert
+            Assert.Equal("News", result.Provider);
+            Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
+            Assert.NotNull(result.Data);
+        }
+
+        [Fact]
+        public async Task FetchAsync_WithSearchInParameter_ReturnsData()
+        {
+            // Arrange
+            var request = new AggregationRequest
+            {
+                Query = "AI",
+                Parameters = new Dictionary<string, string>
+                {
+                    { "searchIn", "title" }
+                }
+            };
+
+            // Act
+            var result = await provider.FetchAsync(request, CancellationToken.None);
+
+            // Assert
+            Assert.Equal("News", result.Provider);
+            Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
+            Assert.NotNull(result.Data);
         }
 
         [Fact]
@@ -264,8 +321,7 @@ namespace AggregatorService.Tests.Services.Providers
             statisticsService.Reset();
             var request = new AggregationRequest
             {
-                Query = "science",
-                Parameters = CreateDefaultParameters()
+                Query = "science"
             };
 
             // Act
@@ -278,6 +334,29 @@ namespace AggregatorService.Tests.Services.Providers
             Assert.Equal(1, newsStats.TotalRequests);
         }
 
+        [Fact]
+        public async Task FetchAsync_RecordsSuccessStatistics_OnSuccess()
+        {
+            // Arrange
+            statisticsService.Reset();
+            var request = new AggregationRequest
+            {
+                Query = "weather"
+            };
+
+            // Act
+            var result = await provider.FetchAsync(request, CancellationToken.None);
+
+            // Assert
+            if (result.IsSuccess)
+            {
+                var stats = statisticsService.GetStatistics();
+                var newsStats = stats.Providers.First(p => p.ProviderName == "News");
+                Assert.Equal(1, newsStats.SuccessfulRequests);
+                Assert.Equal(0, newsStats.FailedRequests);
+            }
+        }
+
         #endregion
 
         #region Caching Tests
@@ -288,8 +367,7 @@ namespace AggregatorService.Tests.Services.Providers
             // Arrange
             var request = new AggregationRequest
             {
-                Query = "business",
-                Parameters = CreateDefaultParameters()
+                Query = "business"
             };
 
             // Act
@@ -298,7 +376,6 @@ namespace AggregatorService.Tests.Services.Providers
             // Assert - Cache operations should have been attempted
             var newsKeys = cacheService.GetKeys.Where(k => k.StartsWith("news:")).ToList();
             Assert.NotEmpty(newsKeys);
-            Assert.All(newsKeys, key => Assert.DoesNotContain("apiKey", key.ToLowerInvariant()));
             Assert.All(newsKeys, key => Assert.DoesNotContain("apikey", key.ToLowerInvariant()));
         }
 
@@ -308,8 +385,7 @@ namespace AggregatorService.Tests.Services.Providers
             // Arrange
             var request = new AggregationRequest
             {
-                Query = "health",
-                Parameters = CreateDefaultParameters()
+                Query = "health"
             };
 
             // Act
@@ -333,19 +409,14 @@ namespace AggregatorService.Tests.Services.Providers
             // Arrange
             var request = new AggregationRequest
             {
-                Query = "entertainment",
-                Parameters = CreateDefaultParameters()
+                Query = "entertainment"
             };
 
             // Act
             var result1 = await provider.FetchAsync(request, CancellationToken.None);
 
             // Only proceed with cache test if first call succeeded
-            if (!result1.IsSuccess)
-            {
-                // Skip cache validation if API call failed (e.g., rate limit)
-                return;
-            }
+            Assert.True(result1.IsSuccess, $"First API call failed: {result1.ErrorMessage}");
 
             var result2 = await provider.FetchAsync(request, CancellationToken.None);
 
@@ -357,6 +428,26 @@ namespace AggregatorService.Tests.Services.Providers
             var newsSetKeys = cacheService.SetKeys.Where(k => k.StartsWith("news:")).ToList();
             Assert.Equal(2, newsGetKeys.Count);
             Assert.Single(newsSetKeys);
+        }
+
+        [Fact]
+        public async Task FetchAsync_DifferentQueries_CreateDifferentCacheKeys()
+        {
+            // Arrange
+            var request1 = new AggregationRequest { Query = "technology" };
+            var request2 = new AggregationRequest { Query = "sports" };
+
+            // Act
+            var result1 = await provider.FetchAsync(request1, CancellationToken.None);
+            var result2 = await provider.FetchAsync(request2, CancellationToken.None);
+
+            // Assert
+            Assert.True(result1.IsSuccess, $"First API call failed: {result1.ErrorMessage}");
+            Assert.True(result2.IsSuccess, $"Second API call failed: {result2.ErrorMessage}");
+
+            var newsSetKeys = cacheService.SetKeys.Where(k => k.StartsWith("news:")).ToList();
+            Assert.Equal(2, newsSetKeys.Count);
+            Assert.NotEqual(newsSetKeys[0], newsSetKeys[1]);
         }
 
         #endregion
