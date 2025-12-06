@@ -61,7 +61,7 @@ namespace AggregatorService.Tests.Services
             // Arrange
             _distributedCacheMock
                 .Setup(c => c.GetAsync("empty-key", It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Array.Empty<byte>());
+                .ReturnsAsync([]);
 
             // Act
             var result = await _cacheService.GetAsync<TestData>("empty-key");

@@ -64,6 +64,7 @@ builder.Services.AddScoped<IAggregationService, AggregationService>();
 builder.Services.AddTransient<IExternalApiProvider, WeatherProvider>();
 builder.Services.AddTransient<IExternalApiProvider, NewsProvider>();
 builder.Services.AddTransient<IExternalApiProvider, OpenLibraryProvider>();
+builder.Services.AddTransient<IExternalApiProvider, OpenAIProvider>();
 // Statistics service (singleton to maintain state across requests)
 builder.Services.AddSingleton<IStatisticsService, StatisticsService>();
 
@@ -93,6 +94,7 @@ builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 
+// On Production this would be added based on environment
 builder.Services.AddSwaggerGen(options =>
 {
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";

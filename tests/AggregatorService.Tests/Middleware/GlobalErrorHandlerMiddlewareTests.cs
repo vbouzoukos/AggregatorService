@@ -23,11 +23,11 @@ namespace AggregatorService.Tests.Middleware
             // Arrange
             var context = new DefaultHttpContext();
             var nextCalled = false;
-            RequestDelegate next = (ctx) =>
+            Task next(HttpContext ctx)
             {
                 nextCalled = true;
                 return Task.CompletedTask;
-            };
+            }
 
             var middleware = new GlobalErrorHandlerMiddleware(next, _loggerMock.Object);
 
@@ -49,7 +49,7 @@ namespace AggregatorService.Tests.Middleware
             var context = new DefaultHttpContext();
             context.Response.Body = new MemoryStream();
 
-            RequestDelegate next = (ctx) => throw new UnauthorizedAccessException("Access denied");
+            static Task next(HttpContext ctx) => throw new UnauthorizedAccessException("Access denied");
             var middleware = new GlobalErrorHandlerMiddleware(next, _loggerMock.Object);
 
             // Act
@@ -71,7 +71,7 @@ namespace AggregatorService.Tests.Middleware
             var context = new DefaultHttpContext();
             context.Response.Body = new MemoryStream();
 
-            RequestDelegate next = (ctx) => throw new ArgumentException("Invalid parameter");
+            static Task next(HttpContext ctx) => throw new ArgumentException("Invalid parameter");
             var middleware = new GlobalErrorHandlerMiddleware(next, _loggerMock.Object);
 
             // Act
@@ -93,7 +93,7 @@ namespace AggregatorService.Tests.Middleware
             var context = new DefaultHttpContext();
             context.Response.Body = new MemoryStream();
 
-            RequestDelegate next = (ctx) => throw new Exception("Something went wrong");
+            static Task next(HttpContext ctx) => throw new Exception("Something went wrong");
             var middleware = new GlobalErrorHandlerMiddleware(next, _loggerMock.Object);
 
             // Act
@@ -119,7 +119,7 @@ namespace AggregatorService.Tests.Middleware
             var context = new DefaultHttpContext();
             context.Response.Body = new MemoryStream();
 
-            RequestDelegate next = (ctx) => throw new ArgumentException("Bad request");
+            static Task next(HttpContext ctx) => throw new ArgumentException("Bad request");
             var middleware = new GlobalErrorHandlerMiddleware(next, _loggerMock.Object);
 
             // Act
@@ -148,7 +148,7 @@ namespace AggregatorService.Tests.Middleware
             context.Response.Body = new MemoryStream();
 
             var exception = new Exception("Test exception");
-            RequestDelegate next = (ctx) => throw exception;
+            Task next(HttpContext ctx) => throw exception;
             var middleware = new GlobalErrorHandlerMiddleware(next, _loggerMock.Object);
 
             // Act
