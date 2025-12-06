@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.Http.Json;
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 
 namespace AggregatorService.Middleware

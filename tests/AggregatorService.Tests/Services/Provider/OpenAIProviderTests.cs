@@ -2,6 +2,7 @@
 using AggregatorService.Services.Caching;
 using AggregatorService.Services.Provider;
 using AggregatorService.Services.Statistics;
+using AggregatorService.Tests.Helpers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;

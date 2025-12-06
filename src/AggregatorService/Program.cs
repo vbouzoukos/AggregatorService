@@ -5,7 +5,6 @@ using AggregatorService.Services.Caching;
 using AggregatorService.Services.Monitoring;
 using AggregatorService.Services.Provider;
 using AggregatorService.Services.Provider.Base;
-using AggregatorService.Services.Providers;
 using AggregatorService.Services.Statistics;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;

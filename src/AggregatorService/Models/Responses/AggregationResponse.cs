@@ -28,6 +28,6 @@
         /// <summary>
         /// Individual responses from each provider
         /// </summary>
-        public List<ApiResponse> Results { get; set; } = new();
+        public List<ApiResponse> Results { get; set; } = [];
     }
 }

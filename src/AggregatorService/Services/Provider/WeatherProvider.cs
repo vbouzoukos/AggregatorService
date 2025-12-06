@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
-namespace AggregatorService.Services.Providers
+namespace AggregatorService.Services.Provider
 {
     /// <summary>
     /// Provider for OpenWeatherMap API
@@ -25,9 +25,9 @@ namespace AggregatorService.Services.Providers
         private const string WeatherCacheKeyPrefix = "weather:";
 
         private readonly TimeSpan geocodingCacheExpiration = TimeSpan.FromDays(
-            configuration.GetValue<int>($"{ConfigKey}:CacheGeoDays", 30));
+            configuration.GetValue($"{ConfigKey}:CacheGeoDays", 30));
         private readonly TimeSpan weatherCacheExpiration = TimeSpan.FromMinutes(
-            configuration.GetValue<int>($"{ConfigKey}:CacheDataMinutes", 10));
+            configuration.GetValue($"{ConfigKey}:CacheDataMinutes", 10));
 
         public string Name => "Weather";
 
