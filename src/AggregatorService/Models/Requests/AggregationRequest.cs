@@ -10,6 +10,10 @@ namespace AggregatorService.Models.Requests
     public class AggregationRequest
     {
         /// <summary>
+        /// Sorting parameter where applicable
+        /// </summary>
+        public string Sort { get; set; } = "";
+        /// <summary>
         /// Key-value pairs of search parameters
         /// Each provider will use the parameters it supports
         /// Examples: city=London, query=technology, hashtag=news

@@ -22,10 +22,11 @@ namespace AggregatorService.Services.Providers
         IStatisticsService statisticsService,
         ILogger<WeatherProvider> logger) : IExternalApiProvider
     {
+        private const string configKey = "ExternalApis:OpenWeatherMap";
         private const string GeocodingCacheKeyPrefix = "geo:";
         private const string WeatherCacheKeyPrefix = "weather:";
-        private static readonly TimeSpan GeocodingCacheExpiration = TimeSpan.FromDays(30);
-        private static readonly TimeSpan WeatherCacheExpiration = TimeSpan.FromMinutes(10);
+        private readonly TimeSpan GeocodingCacheExpiration = TimeSpan.FromDays(configuration.GetValue<int>($"{configKey}:CacheGeoDays"));
+        private readonly TimeSpan WeatherCacheExpiration = TimeSpan.FromMinutes(configuration.GetValue<int>($"{configKey}:CacheDataMinutes"));
 
         public string Name => "weather";
 
@@ -44,7 +45,12 @@ namespace AggregatorService.Services.Providers
             var hasCoordinates = parameters.ContainsKey("lat") && parameters.ContainsKey("lon");
             return hasCity || hasCoordinates;
         }
-
+        /// <summary>
+        /// Retrieves Weather Api data based on parameters provided
+        /// </summary>
+        /// <param name="parameters">parameter dictionary</param>
+        /// <param name="cancellationToken">Cancelation Token</param>
+        /// <returns>ApiResponse Object</returns>
         public async Task<ApiResponse> FetchAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
@@ -81,7 +87,7 @@ namespace AggregatorService.Services.Providers
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error fetching weather data");
+                logger.LogError(ex, "Error fetching {Name} data", Name);
                 stopwatch.Stop();
                 statisticsService.RecordRequest(Name, stopwatch.Elapsed, false);
 
@@ -98,9 +104,7 @@ namespace AggregatorService.Services.Providers
         /// <summary>
         /// Gets coordinates either from parameters directly or by geocoding city name
         /// </summary>
-        private async Task<(string? lat, string? lon)> GetCoordinatesAsync(
-            Dictionary<string, string> parameters,
-            CancellationToken cancellationToken)
+        private async Task<(string? lat, string? lon)> GetCoordinatesAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken)
         {
             if (parameters.TryGetValue("lat", out var lat) && parameters.TryGetValue("lon", out var lon))
             {
@@ -119,25 +123,20 @@ namespace AggregatorService.Services.Providers
         /// Builds the query string for the weather API (excluding API key)
         /// Used both for cache key and URL building
         /// </summary>
-        private static string BuildWeatherQueryString(string lat, string lon, Dictionary<string, string> parameters)
+        private string BuildWeatherQueryString(string lat, string lon, Dictionary<string, string> parameters)
         {
             var queryBuilder = new StringBuilder();
             queryBuilder.Append($"lat={lat}");
             queryBuilder.Append($"&lon={lon}");
 
-            if (parameters.TryGetValue("exclude", out var exclude))
-            {
-                queryBuilder.Append($"&exclude={exclude}");
-            }
+            string[] apiParams = configuration.GetSection($"{configKey}:parameters").Get<string[]>()!;
 
-            if (parameters.TryGetValue("units", out var units))
+            foreach (var param in apiParams)
             {
-                queryBuilder.Append($"&units={units}");
-            }
-
-            if (parameters.TryGetValue("lang", out var lang))
-            {
-                queryBuilder.Append($"&lang={lang}");
+                if (parameters.TryGetValue(param, out var paramValue))
+                {
+                    queryBuilder.Append($"&{param}={Uri.EscapeDataString(paramValue)}");
+                }
             }
 
             return queryBuilder.ToString();
@@ -181,8 +180,8 @@ namespace AggregatorService.Services.Providers
                 return (cached.Lat, cached.Lon);
             }
 
-            var apiKey = configuration["ExternalApis:OpenWeatherMap:ApiKey"];
-            var baseUrl = configuration["ExternalApis:OpenWeatherMap:GeocodingUrl"];
+            var apiKey = configuration[$"{configKey}:ApiKey"];
+            var baseUrl = configuration[$"{configKey}:GeocodingUrl"];
             var url = $"{baseUrl}?{queryBuilder}&appid={apiKey}";
 
             var client = httpClientFactory.CreateClient();
@@ -233,8 +232,8 @@ namespace AggregatorService.Services.Providers
                 return cached;
             }
 
-            var apiKey = configuration["ExternalApis:OpenWeatherMap:ApiKey"];
-            var baseUrl = configuration["ExternalApis:OpenWeatherMap:WeatherUrl"];
+            var apiKey = configuration[$"{configKey}:ApiKey"];
+            var baseUrl = configuration[$"{configKey}:WeatherUrl"];
             var url = $"{baseUrl}?{queryString}&appid={apiKey}";
 
             var client = httpClientFactory.CreateClient();
