@@ -61,8 +61,9 @@ builder.Services.AddScoped<IAggregationService, AggregationService>();
 //--------------------------------------------------------------------------------
 // Providers
 //--------------------------------------------------------------------------------
-builder.Services.AddScoped<IExternalApiProvider, WeatherProvider>();
-builder.Services.AddScoped<IExternalApiProvider, NewsProvider>();
+builder.Services.AddTransient<IExternalApiProvider, WeatherProvider>();
+builder.Services.AddTransient<IExternalApiProvider, NewsProvider>();
+builder.Services.AddTransient<IExternalApiProvider, OpenLibraryProvider>();
 // Statistics service (singleton to maintain state across requests)
 builder.Services.AddSingleton<IStatisticsService, StatisticsService>();
 
@@ -76,12 +77,15 @@ builder.Services.AddHostedService<PerformanceMonitorService>();
 // Two-tier caching improvement: Use IMemoryCache (L1) for fast local access,
 // fall back to Redis (L2) on miss, then populate L1 for subsequent requests
 builder.Services.AddDistributedMemoryCache();
-builder.Services.AddScoped<ICacheService, CacheService>();
+builder.Services.AddTransient<ICacheService, CacheService>();
 
 //--------------------------------------------------------------------------------
 // HttpClient Factory
 //--------------------------------------------------------------------------------
-builder.Services.AddHttpClient();
+builder.Services.AddHttpClient("", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(180); // Set your timeout here
+});
 //--------------------------------------------------------------------------------
 // Controllers
 //--------------------------------------------------------------------------------
@@ -94,6 +98,31 @@ builder.Services.AddSwaggerGen(options =>
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
     options.IncludeXmlComments(xmlPath);
+    // Add JWT Authentication support to Swagger
+    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Enter your JWT token. Example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    });
+
+    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
 });
 
 var app = builder.Build();

@@ -143,7 +143,7 @@ The application uses multiple configuration files:
       "Required": [ "q" ],
       "Filters": {
         "Query": "q",
-        "Language": "language"
+        "Language": "lang"
       },
       "SortParameter": "sortBy",
       "SortMappings": {
@@ -159,8 +159,8 @@ The application uses multiple configuration files:
       "Parameters": [ "sort" ],
       "Required": [ "q", "title", "author" ],
       "Filters": {
-        "Query": "q",
-        "Language": "language"
+        "Query": "title",
+        "Language": "lang"
       },
       "SortParameter": "sort",
       "SortMappings": {

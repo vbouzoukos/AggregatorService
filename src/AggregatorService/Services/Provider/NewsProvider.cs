@@ -111,7 +111,15 @@ namespace AggregatorService.Services.Provider
                     workingParams[filter.Value] = filterValue;
                 }
             }
-
+            // Add default date range if not provided (NewsAPI requires this)
+            //if (!workingParams.ContainsKey("from"))
+            //{
+            //    workingParams["from"] = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd");
+            //}
+            //if (!workingParams.ContainsKey("to"))
+            //{
+            //    workingParams["to"] = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            //}
             return workingParams;
         }
 
@@ -165,6 +173,7 @@ namespace AggregatorService.Services.Provider
             var url = $"{baseUrl}?{queryString}&apiKey={apiKey}";
 
             var client = httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("AggregatorService/1.0");
             using var response = await client.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
 
