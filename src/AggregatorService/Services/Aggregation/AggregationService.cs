@@ -1,7 +1,6 @@
 ﻿using AggregatorService.Models.Requests;
 using AggregatorService.Models.Responses;
 using AggregatorService.Services.Provider.Base;
-using AggregatorService.Services.Providers.Base;
 using System.Diagnostics;
 
 namespace AggregatorService.Services.Aggregation
@@ -55,7 +54,7 @@ namespace AggregatorService.Services.Aggregation
                 TotalResponseTime = stopwatch.Elapsed,
                 ProvidersQueried = applicableProviders.Count,
                 SuccessfulResponses = results.Count(r => r.IsSuccess),
-                Results = results.ToList()
+                Results = [.. results]
             };
 
             logger.LogInformation(

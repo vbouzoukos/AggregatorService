@@ -1,6 +1,7 @@
 ﻿using AggregatorService.Models.Responses;
 using AggregatorService.Services.Caching;
 using AggregatorService.Services.Provider.Base;
+using AggregatorService.Services.Statistics;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -8,20 +9,32 @@ using System.Text.Json;
 namespace AggregatorService.Services.Providers
 {
     /// <summary>
-    /// Provider for OpenWeatherMap API
-    /// Supports parameters: city, country (optional), lat, lon, units (optional), lang (optional)
+    /// Provider for OpenWeatherMap One Call API 3.0
+    /// Supported parameters:
+    /// - Geocoding: city (required), state (optional, US only), country (optional, ISO 3166)
+    /// - Direct coordinates: lat, lon
+    /// - Weather options: exclude, units, lang
     /// </summary>
     public class WeatherProvider(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ICacheService cacheService,
+        IStatisticsService statisticsService,
         ILogger<WeatherProvider> logger) : IExternalApiProvider
     {
         private const string GeocodingCacheKeyPrefix = "geo:";
+        private const string WeatherCacheKeyPrefix = "weather:";
         private static readonly TimeSpan GeocodingCacheExpiration = TimeSpan.FromDays(30);
+        private static readonly TimeSpan WeatherCacheExpiration = TimeSpan.FromMinutes(10);
 
         public string Name => "weather";
 
+
+        // Seriralizer Options for json transformations
+        private static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
         /// <summary>
         /// Provider can handle request if city OR (lat and lon) are provided
         /// </summary>
@@ -42,6 +55,9 @@ namespace AggregatorService.Services.Providers
 
                 if (lat == null || lon == null)
                 {
+                    stopwatch.Stop();
+                    statisticsService.RecordRequest(Name, stopwatch.Elapsed, false);
+
                     return new ApiResponse
                     {
                         Provider = Name,
@@ -52,8 +68,8 @@ namespace AggregatorService.Services.Providers
                 }
 
                 var weatherData = await GetWeatherDataAsync(lat, lon, parameters, cancellationToken);
-
                 stopwatch.Stop();
+                statisticsService.RecordRequest(Name, stopwatch.Elapsed, true);
 
                 return new ApiResponse
                 {
@@ -67,6 +83,7 @@ namespace AggregatorService.Services.Providers
             {
                 logger.LogError(ex, "Error fetching weather data");
                 stopwatch.Stop();
+                statisticsService.RecordRequest(Name, stopwatch.Elapsed, false);
 
                 return new ApiResponse
                 {
@@ -85,20 +102,45 @@ namespace AggregatorService.Services.Providers
             Dictionary<string, string> parameters,
             CancellationToken cancellationToken)
         {
-            // If coordinates provided directly, use them
             if (parameters.TryGetValue("lat", out var lat) && parameters.TryGetValue("lon", out var lon))
             {
                 return (lat, lon);
             }
 
-            // Otherwise geocode the city
-            if (parameters.TryGetValue("city", out var city))
+            if (parameters.ContainsKey("city"))
             {
-                var country = parameters.GetValueOrDefault("country", string.Empty);
-                return await GeocodeAsync(city, country, cancellationToken);
+                return await GeocodeAsync(parameters, cancellationToken);
             }
 
             return (null, null);
+        }
+
+        /// <summary>
+        /// Builds the query string for the weather API (excluding API key)
+        /// Used both for cache key and URL building
+        /// </summary>
+        private static string BuildWeatherQueryString(string lat, string lon, Dictionary<string, string> parameters)
+        {
+            var queryBuilder = new StringBuilder();
+            queryBuilder.Append($"lat={lat}");
+            queryBuilder.Append($"&lon={lon}");
+
+            if (parameters.TryGetValue("exclude", out var exclude))
+            {
+                queryBuilder.Append($"&exclude={exclude}");
+            }
+
+            if (parameters.TryGetValue("units", out var units))
+            {
+                queryBuilder.Append($"&units={units}");
+            }
+
+            if (parameters.TryGetValue("lang", out var lang))
+            {
+                queryBuilder.Append($"&lang={lang}");
+            }
+
+            return queryBuilder.ToString();
         }
 
         /// <summary>
@@ -106,13 +148,32 @@ namespace AggregatorService.Services.Providers
         /// Results are cached to reduce API calls
         /// </summary>
         private async Task<(string? lat, string? lon)> GeocodeAsync(
-            string city,
-            string country,
+            Dictionary<string, string> parameters,
             CancellationToken cancellationToken)
         {
-            var cacheKey = $"{GeocodingCacheKeyPrefix}{city}:{country}".ToLowerInvariant();
+            var city = parameters["city"];
+            var state = parameters.GetValueOrDefault("state", string.Empty);
+            var country = parameters.GetValueOrDefault("country", string.Empty);
 
-            // Check cache first
+            // Build query string without API key for cache key
+            var queryBuilder = new StringBuilder();
+            queryBuilder.Append($"q={Uri.EscapeDataString(city)}");
+            if (!string.IsNullOrEmpty(state))
+            {
+                queryBuilder.Append($",{Uri.EscapeDataString(state)}");
+            }
+            if (!string.IsNullOrEmpty(country))
+            {
+                if (string.IsNullOrEmpty(state))
+                {
+                    queryBuilder.Append(',');
+                }
+                queryBuilder.Append($",{Uri.EscapeDataString(country)}");
+            }
+            queryBuilder.Append("&limit=1");
+
+            var cacheKey = $"{GeocodingCacheKeyPrefix}{queryBuilder}".ToLowerInvariant();
+
             var cached = await cacheService.GetAsync<GeocodingResult>(cacheKey, cancellationToken);
             if (cached != null)
             {
@@ -120,22 +181,16 @@ namespace AggregatorService.Services.Providers
                 return (cached.Lat, cached.Lon);
             }
 
-            // Call Geocoding API
             var apiKey = configuration["ExternalApis:OpenWeatherMap:ApiKey"];
             var baseUrl = configuration["ExternalApis:OpenWeatherMap:GeocodingUrl"];
+            var url = $"{baseUrl}?{queryBuilder}&appid={apiKey}";
 
-            var query = string.IsNullOrEmpty(country) ? city : $"{city},{country}";
-            var url = $"{baseUrl}?q={Uri.EscapeDataString(query)}&limit=1&appid={apiKey}";
-
-            var client = httpClientFactory.CreateClient("OpenWeatherMap");
-            var response = await client.GetAsync(url, cancellationToken);
+            var client = httpClientFactory.CreateClient();
+            using var response = await client.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var results = JsonSerializer.Deserialize<List<GeocodingApiResponse>>(content, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var results = JsonSerializer.Deserialize<List<GeocodingApiResponse>>(content, JsonOptions);
 
             if (results == null || results.Count == 0)
             {
@@ -150,7 +205,6 @@ namespace AggregatorService.Services.Providers
                 Lon = result.Lon.ToString()
             };
 
-            // Cache the result
             await cacheService.SetAsync(cacheKey, geocodingResult, GeocodingCacheExpiration, cancellationToken);
             logger.LogDebug("Cached geocoding result for {City}", city);
 
@@ -158,7 +212,8 @@ namespace AggregatorService.Services.Providers
         }
 
         /// <summary>
-        /// Fetches current weather data from OpenWeatherMap API
+        /// Fetches weather data from OpenWeatherMap One Call API 3.0
+        /// Results are cached based on query string (excluding API key)
         /// </summary>
         private async Task<dynamic?> GetWeatherDataAsync(
             string lat,
@@ -166,50 +221,49 @@ namespace AggregatorService.Services.Providers
             Dictionary<string, string> parameters,
             CancellationToken cancellationToken)
         {
+            // Build query string without API key
+            var queryString = BuildWeatherQueryString(lat, lon, parameters);
+            var cacheKey = $"{WeatherCacheKeyPrefix}{queryString}".ToLowerInvariant();
+
+            // Check cache first
+            var cached = await cacheService.GetAsync<JsonElement>(cacheKey, cancellationToken);
+            if (cached.ValueKind != JsonValueKind.Undefined)
+            {
+                logger.LogDebug("Weather cache hit for {CacheKey}", cacheKey);
+                return cached;
+            }
+
             var apiKey = configuration["ExternalApis:OpenWeatherMap:ApiKey"];
             var baseUrl = configuration["ExternalApis:OpenWeatherMap:WeatherUrl"];
+            var url = $"{baseUrl}?{queryString}&appid={apiKey}";
 
-            var urlBuilder = new StringBuilder();
-            urlBuilder.Append(baseUrl);
-            urlBuilder.Append($"?lat={lat}&lon={lon}&appid={apiKey}");
-
-            // Add optional parameters
-            if (parameters.TryGetValue("units", out var units))
-            {
-                urlBuilder.Append($"&units={units}");
-            }
-
-            if (parameters.TryGetValue("lang", out var lang))
-            {
-                urlBuilder.Append($"&lang={lang}");
-            }
-
-            var client = httpClientFactory.CreateClient("OpenWeatherMap");
-            var response = await client.GetAsync(urlBuilder.ToString(), cancellationToken);
+            var client = httpClientFactory.CreateClient();
+            using var response = await client.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            return JsonSerializer.Deserialize<dynamic>(content);
+            var weatherData = JsonSerializer.Deserialize<JsonElement>(content);
+
+            // Cache the weather data
+            await cacheService.SetAsync(cacheKey, weatherData, WeatherCacheExpiration, cancellationToken);
+            logger.LogDebug("Cached weather data for {CacheKey}", cacheKey);
+
+            return weatherData;
         }
 
-        /// <summary>
-        /// Internal class for caching geocoding results
-        /// </summary>
         private class GeocodingResult
         {
             public string Lat { get; set; } = string.Empty;
             public string Lon { get; set; } = string.Empty;
         }
 
-        /// <summary>
-        /// Maps to OpenWeatherMap Geocoding API response
-        /// </summary>
         private class GeocodingApiResponse
         {
             public double Lat { get; set; }
             public double Lon { get; set; }
             public string Name { get; set; } = string.Empty;
             public string Country { get; set; } = string.Empty;
+            public string State { get; set; } = string.Empty;
         }
     }
 }

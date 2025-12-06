@@ -1,4 +1,5 @@
 using AggregatorService.Middleware;
+using AggregatorService.Services.Aggregation;
 using AggregatorService.Services.Authorise;
 using AggregatorService.Services.Caching;
 using AggregatorService.Services.Provider.Base;
@@ -67,6 +68,13 @@ builder.Services.AddScoped<IExternalApiProvider, WeatherProvider>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddScoped<ICacheService, CacheService>();
 
+//--------------------------------------------------------------------------------
+// HttpClient Factory
+//--------------------------------------------------------------------------------
+builder.Services.AddHttpClient();
+//--------------------------------------------------------------------------------
+// Controllers
+//--------------------------------------------------------------------------------
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();

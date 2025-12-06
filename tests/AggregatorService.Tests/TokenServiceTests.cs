@@ -15,7 +15,7 @@ namespace AggregatorService.Tests.Services
         {
             identityProviderMock = new Mock<IIdentityProvider>();
 
-            // Setup test configuration
+            // Setup test configuration mock
             var configValues = new Dictionary<string, string?>
             {
                 { "JwtSettings:SecretKey", "AggregatorService-Dev-SecretKey-2024-NotForProduction-Use-Only!!" },
