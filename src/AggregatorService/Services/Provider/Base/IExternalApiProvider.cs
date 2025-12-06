@@ -1,4 +1,5 @@
-﻿using AggregatorService.Models.Responses;
+﻿using AggregatorService.Models.Requests;
+using AggregatorService.Models.Responses;
 
 namespace AggregatorService.Services.Provider.Base
 {
@@ -8,23 +9,25 @@ namespace AggregatorService.Services.Provider.Base
     public interface IExternalApiProvider
     {
         /// <summary>
-        /// Unique name of the provider (e.g., "weather", "news", "twitter")
+        /// Unique name of the provider (e.g., "Weather", "News", "Books")
         /// </summary>
         string Name { get; }
 
         /// <summary>
-        /// Checks if the provider can handle the given parameters
+        /// Checks if the provider can handle the given request.
+        /// Uses Required config to determine if any required parameter is present
+        /// in either the filters or parameters.
         /// </summary>
-        /// <param name="parameters">Key-value pairs from the request</param>
-        /// <returns>True if provider has required parameters to make a call</returns>
-        bool CanHandle(Dictionary<string, string> parameters);
+        /// <param name="request">Aggregation request with filters and parameters</param>
+        /// <returns>True if provider has at least one required parameter</returns>
+        bool CanHandle(AggregationRequest request);
 
         /// <summary>
         /// Fetches data from the external API
         /// </summary>
-        /// <param name="parameters">Key-value pairs from the request</param>
+        /// <param name="request">Aggregation request with filters, sort, and parameters</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>API response with data or error</returns>
-        Task<ApiResponse> FetchAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken);
+        Task<ApiResponse> FetchAsync(AggregationRequest request, CancellationToken cancellationToken);
     }
 }

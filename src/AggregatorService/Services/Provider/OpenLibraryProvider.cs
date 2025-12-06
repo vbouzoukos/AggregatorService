@@ -1,4 +1,5 @@
-﻿using AggregatorService.Models.Responses;
+﻿using AggregatorService.Models.Requests;
+using AggregatorService.Models.Responses;
 using AggregatorService.Services.Caching;
 using AggregatorService.Services.Provider.Base;
 using AggregatorService.Services.Statistics;
@@ -10,14 +11,7 @@ namespace AggregatorService.Services.Provider
 {
     /// <summary>
     /// Provider for Open Library Search API
-    /// Supported parameters:
-    /// - q: Search query (required)
-    /// - title: Search by title
-    /// - author: Search by author
-    /// - sort: Sort order (new, old, rating, random)
-    /// - limit: Number of results
-    /// - page: Page number
-    /// - language: Filter by language (eng, fre, ger, etc.)
+    /// Filters, sort mappings, and required parameters configured in appsettings.json
     /// </summary>
     public class OpenLibraryProvider(
         IHttpClientFactory httpClientFactory,
@@ -34,23 +28,48 @@ namespace AggregatorService.Services.Provider
         private readonly TimeSpan cacheExpiration = TimeSpan.FromMinutes(
             configuration.GetValue($"{ConfigKey}:CacheMinutes", 30));
 
-        /// <summary>
-        /// Provider can handle request if q, title, or author is provided
-        /// </summary>
-        public bool CanHandle(Dictionary<string, string> parameters)
+        public bool CanHandle(AggregationRequest request)
         {
-            return parameters.ContainsKey("q") ||
-                   parameters.ContainsKey("title") ||
-                   parameters.ContainsKey("author");
+            var required = configuration.GetSection($"{ConfigKey}:Required").Get<string[]>() ?? [];
+            var filters = configuration.GetSection($"{ConfigKey}:Filters").Get<Dictionary<string, string>>() ?? [];
+
+            // Check if any required parameter exists with a value in filters or parameters
+            foreach (var req in required)
+            {
+                // Check if required param is satisfied by a filter
+                var filterMatch = filters.FirstOrDefault(f => f.Value.Equals(req, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(filterMatch.Key))
+                {
+                    var filterValue = GetFilterValue(request, filterMatch.Key);
+                    if (!string.IsNullOrEmpty(filterValue))
+                    {
+                        return true;
+                    }
+                }
+
+                // Check if required param exists in parameters with a value
+                if (request.Parameters.TryGetValue(req, out var paramValue) && !string.IsNullOrEmpty(paramValue))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        public async Task<ApiResponse> FetchAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken)
+        public async Task<ApiResponse> FetchAsync(AggregationRequest request, CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
 
             try
             {
-                var booksData = await GetBooksDataAsync(parameters, cancellationToken);
+                // Build working parameters from filters and request parameters
+                var workingParams = BuildWorkingParameters(request);
+
+                // Apply sort mapping
+                ApplySortMapping(workingParams, request.Sort);
+
+                var booksData = await GetBooksDataAsync(workingParams, cancellationToken);
                 stopwatch.Stop();
                 statisticsService.RecordRequest(Name, stopwatch.Elapsed, true);
 
@@ -78,6 +97,55 @@ namespace AggregatorService.Services.Provider
             }
         }
 
+        private Dictionary<string, string> BuildWorkingParameters(AggregationRequest request)
+        {
+            var workingParams = new Dictionary<string, string>(request.Parameters, StringComparer.OrdinalIgnoreCase);
+            var filters = configuration.GetSection($"{ConfigKey}:Filters").Get<Dictionary<string, string>>() ?? [];
+
+            // Apply filters from request to working parameters
+            foreach (var filter in filters)
+            {
+                var filterValue = GetFilterValue(request, filter.Key);
+                if (!string.IsNullOrEmpty(filterValue))
+                {
+                    workingParams[filter.Value] = filterValue;
+                }
+            }
+
+            return workingParams;
+        }
+
+        private static string? GetFilterValue(AggregationRequest request, string filterName)
+        {
+            return filterName.ToLowerInvariant() switch
+            {
+                "query" => request.Query,
+                "country" => request.Country,
+                "language" => request.Language,
+                _ => null
+            };
+        }
+
+        private void ApplySortMapping(Dictionary<string, string> parameters, SortOption sort)
+        {
+            var sortParameter = configuration[$"{ConfigKey}:SortParameter"];
+            var sortMappings = configuration.GetSection($"{ConfigKey}:SortMappings")
+                .Get<Dictionary<string, string?>>();
+
+            if (string.IsNullOrEmpty(sortParameter) || sortMappings == null)
+            {
+                logger.LogDebug("{Name} does not support sorting", Name);
+                return;
+            }
+
+            var sortKey = sort.ToString();
+            if (sortMappings.TryGetValue(sortKey, out var apiSortValue) && !string.IsNullOrEmpty(apiSortValue))
+            {
+                parameters[sortParameter] = apiSortValue;
+                logger.LogDebug("Applied sort mapping: {Sort} -> {Param}={Value}", sort, sortParameter, apiSortValue);
+            }
+        }
+
         private async Task<dynamic?> GetBooksDataAsync(
             Dictionary<string, string> parameters,
             CancellationToken cancellationToken)
@@ -85,7 +153,6 @@ namespace AggregatorService.Services.Provider
             var queryString = BuildQueryString(parameters);
             var cacheKey = $"{CacheKeyPrefix}{queryString}".ToLowerInvariant();
 
-            // Check cache first
             var cached = await cacheService.GetAsync<JsonElement>(cacheKey, cancellationToken);
             if (cached.ValueKind != JsonValueKind.Undefined)
             {
@@ -103,7 +170,6 @@ namespace AggregatorService.Services.Provider
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
             var booksData = JsonSerializer.Deserialize<JsonElement>(content);
 
-            // Cache the books data
             await cacheService.SetAsync(cacheKey, booksData, cacheExpiration, cancellationToken);
             logger.LogDebug("Cached books data for {CacheKey}", cacheKey);
 
@@ -113,9 +179,15 @@ namespace AggregatorService.Services.Provider
         private string BuildQueryString(Dictionary<string, string> parameters)
         {
             var queryBuilder = new StringBuilder();
+
+            // Get all parameter keys: filters + configured parameters
+            var filters = configuration.GetSection($"{ConfigKey}:Filters").Get<Dictionary<string, string>>() ?? [];
             var apiParams = configuration.GetSection($"{ConfigKey}:Parameters").Get<string[]>() ?? [];
 
-            foreach (var param in apiParams)
+            // Combine filter values and api params
+            var allParams = filters.Values.Concat(apiParams).Distinct();
+
+            foreach (var param in allParams)
             {
                 if (parameters.TryGetValue(param, out var paramValue) && !string.IsNullOrEmpty(paramValue))
                 {
@@ -126,6 +198,7 @@ namespace AggregatorService.Services.Provider
                     queryBuilder.Append($"{param}={Uri.EscapeDataString(paramValue)}");
                 }
             }
+
             return queryBuilder.ToString();
         }
     }

@@ -2,6 +2,7 @@
 using AggregatorService.Models.Responses;
 using AggregatorService.Services.Statistics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Moq;
 
 namespace AggregatorService.Tests.Controllers
@@ -9,12 +10,25 @@ namespace AggregatorService.Tests.Controllers
     public class StatisticsControllerTests
     {
         private readonly Mock<IStatisticsService> statisticsServiceMock;
+        private readonly IConfiguration configuration;
         private readonly StatisticsController controller;
 
         public StatisticsControllerTests()
         {
             statisticsServiceMock = new Mock<IStatisticsService>();
-            controller = new StatisticsController(statisticsServiceMock.Object);
+
+            // Setup configuration for performance monitor
+            var configValues = new Dictionary<string, string?>
+            {
+                { "PerformanceMonitor:RecentWindowMinutes", "5" },
+                { "PerformanceMonitor:AnomalyThresholdPercent", "50" }
+            };
+
+            configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(configValues)
+                .Build();
+
+            controller = new StatisticsController(statisticsServiceMock.Object, configuration);
         }
 
         #region GetStatistics Tests
@@ -30,7 +44,7 @@ namespace AggregatorService.Tests.Controllers
                 [
                     new ProviderStatistics
                     {
-                        ProviderName = "weather",
+                        ProviderName = "Weather",
                         TotalRequests = 100,
                         SuccessfulRequests = 95,
                         FailedRequests = 5,
@@ -56,7 +70,7 @@ namespace AggregatorService.Tests.Controllers
             var okResult = Assert.IsType<OkObjectResult>(result.Result);
             var response = Assert.IsType<StatisticsResponse>(okResult.Value);
             Assert.Single(response.Providers);
-            Assert.Equal("weather", response.Providers[0].ProviderName);
+            Assert.Equal("Weather", response.Providers[0].ProviderName);
             Assert.Equal(100, response.Providers[0].TotalRequests);
         }
 
@@ -68,9 +82,9 @@ namespace AggregatorService.Tests.Controllers
             {
                 Providers =
                 [
-                    new ProviderStatistics { ProviderName = "weather", TotalRequests = 50 },
-                    new ProviderStatistics { ProviderName = "news", TotalRequests = 30 },
-                    new ProviderStatistics { ProviderName = "twitter", TotalRequests = 20 }
+                    new ProviderStatistics { ProviderName = "Weather", TotalRequests = 50 },
+                    new ProviderStatistics { ProviderName = "News", TotalRequests = 30 },
+                    new ProviderStatistics { ProviderName = "Books", TotalRequests = 20 }
                 ]
             };
 
@@ -119,7 +133,7 @@ namespace AggregatorService.Tests.Controllers
                 [
                     new ProviderStatistics
                     {
-                        ProviderName = "weather",
+                        ProviderName = "Weather",
                         TotalRequests = 100,
                         PerformanceBuckets = new PerformanceBuckets
                         {
@@ -146,6 +160,189 @@ namespace AggregatorService.Tests.Controllers
             Assert.Equal(35, buckets.Average);
             Assert.Equal(15, buckets.Slow);
             Assert.Equal(100, buckets.Fast + buckets.Average + buckets.Slow);
+        }
+
+        #endregion
+
+        #region GetPerformanceStatus Tests
+
+        [Fact]
+        public void GetPerformanceStatus_ReturnsOkWithResponse()
+        {
+            // Arrange
+            statisticsServiceMock
+                .Setup(s => s.GetProviderNames())
+                .Returns(["Weather", "News"]);
+
+            statisticsServiceMock
+                .Setup(s => s.GetProviderSnapshot("Weather", It.IsAny<TimeSpan>()))
+                .Returns(new ProviderPerformanceSnapshot
+                {
+                    ProviderName = "Weather",
+                    OverallAverageMs = 200,
+                    OverallRequestCount = 100,
+                    RecentAverageMs = 220,
+                    RecentRequestCount = 10
+                });
+
+            statisticsServiceMock
+                .Setup(s => s.GetProviderSnapshot("News", It.IsAny<TimeSpan>()))
+                .Returns(new ProviderPerformanceSnapshot
+                {
+                    ProviderName = "News",
+                    OverallAverageMs = 300,
+                    OverallRequestCount = 50,
+                    RecentAverageMs = 310,
+                    RecentRequestCount = 5
+                });
+
+            // Act
+            var result = controller.GetPerformanceStatus();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result.Result);
+            var response = Assert.IsType<PerformanceAnomalyResponse>(okResult.Value);
+            Assert.Equal(5, response.RecentWindowMinutes);
+            Assert.Equal(50, response.AnomalyThresholdPercent);
+            Assert.Equal(2, response.Providers.Count);
+        }
+
+        [Fact]
+        public void GetPerformanceStatus_DetectsAnomaly_WhenDegradationExceedsThreshold()
+        {
+            // Arrange
+            statisticsServiceMock
+                .Setup(s => s.GetProviderNames())
+                .Returns(["Weather"]);
+
+            statisticsServiceMock
+                .Setup(s => s.GetProviderSnapshot("Weather", It.IsAny<TimeSpan>()))
+                .Returns(new ProviderPerformanceSnapshot
+                {
+                    ProviderName = "Weather",
+                    OverallAverageMs = 200,
+                    OverallRequestCount = 100,
+                    RecentAverageMs = 350, // 75% degradation
+                    RecentRequestCount = 10
+                });
+
+            // Act
+            var result = controller.GetPerformanceStatus();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result.Result);
+            var response = Assert.IsType<PerformanceAnomalyResponse>(okResult.Value);
+            var provider = response.Providers[0];
+            Assert.True(provider.IsAnomaly);
+            Assert.Equal("Anomaly", provider.Status);
+            Assert.Equal(75, provider.DegradationPercent);
+        }
+
+        [Fact]
+        public void GetPerformanceStatus_NoAnomaly_WhenDegradationBelowThreshold()
+        {
+            // Arrange
+            statisticsServiceMock
+                .Setup(s => s.GetProviderNames())
+                .Returns(["Weather"]);
+
+            statisticsServiceMock
+                .Setup(s => s.GetProviderSnapshot("Weather", It.IsAny<TimeSpan>()))
+                .Returns(new ProviderPerformanceSnapshot
+                {
+                    ProviderName = "Weather",
+                    OverallAverageMs = 200,
+                    OverallRequestCount = 100,
+                    RecentAverageMs = 220, // 10% degradation
+                    RecentRequestCount = 10
+                });
+
+            // Act
+            var result = controller.GetPerformanceStatus();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result.Result);
+            var response = Assert.IsType<PerformanceAnomalyResponse>(okResult.Value);
+            var provider = response.Providers[0];
+            Assert.False(provider.IsAnomaly);
+            Assert.Equal("Normal", provider.Status);
+        }
+
+        [Fact]
+        public void GetPerformanceStatus_InsufficientData_WhenNotEnoughRequests()
+        {
+            // Arrange
+            statisticsServiceMock
+                .Setup(s => s.GetProviderNames())
+                .Returns(["Weather"]);
+
+            statisticsServiceMock
+                .Setup(s => s.GetProviderSnapshot("Weather", It.IsAny<TimeSpan>()))
+                .Returns(new ProviderPerformanceSnapshot
+                {
+                    ProviderName = "Weather",
+                    OverallAverageMs = 200,
+                    OverallRequestCount = 3, // Less than 5
+                    RecentAverageMs = 400,
+                    RecentRequestCount = 1 // Less than 2
+                });
+
+            // Act
+            var result = controller.GetPerformanceStatus();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result.Result);
+            var response = Assert.IsType<PerformanceAnomalyResponse>(okResult.Value);
+            var provider = response.Providers[0];
+            Assert.False(provider.IsAnomaly);
+            Assert.Equal("Insufficient Data", provider.Status);
+        }
+
+        [Fact]
+        public void GetPerformanceStatus_NoRecentData_WhenNoRecentRequests()
+        {
+            // Arrange
+            statisticsServiceMock
+                .Setup(s => s.GetProviderNames())
+                .Returns(["Weather"]);
+
+            statisticsServiceMock
+                .Setup(s => s.GetProviderSnapshot("Weather", It.IsAny<TimeSpan>()))
+                .Returns(new ProviderPerformanceSnapshot
+                {
+                    ProviderName = "Weather",
+                    OverallAverageMs = 200,
+                    OverallRequestCount = 100,
+                    RecentAverageMs = null, // No recent data
+                    RecentRequestCount = 0
+                });
+
+            // Act
+            var result = controller.GetPerformanceStatus();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result.Result);
+            var response = Assert.IsType<PerformanceAnomalyResponse>(okResult.Value);
+            var provider = response.Providers[0];
+            Assert.False(provider.IsAnomaly);
+            Assert.Equal("No Recent Data", provider.Status);
+        }
+
+        [Fact]
+        public void GetPerformanceStatus_WithNoProviders_ReturnsEmptyList()
+        {
+            // Arrange
+            statisticsServiceMock
+                .Setup(s => s.GetProviderNames())
+                .Returns([]);
+
+            // Act
+            var result = controller.GetPerformanceStatus();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result.Result);
+            var response = Assert.IsType<PerformanceAnomalyResponse>(okResult.Value);
+            Assert.Empty(response.Providers);
         }
 
         #endregion

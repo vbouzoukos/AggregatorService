@@ -19,19 +19,22 @@ namespace AggregatorService.Services.Aggregation
         {
             var stopwatch = Stopwatch.StartNew();
 
-            // Filter providers that can handle the given parameters
+            // Filter providers that can handle the given request
             var applicableProviders = providers
-                .Where(p => p.CanHandle(request.Parameters))
+                .Where(p => p.CanHandle(request))
                 .ToList();
 
             logger.LogInformation(
-                "Aggregating data from {Count} providers for parameters: {Parameters}",
+                "Aggregating data from {Count} providers. Query: {Query}, Country: {Country}, Language: {Language}, Sort: {Sort}",
                 applicableProviders.Count,
-                string.Join(", ", request.Parameters.Keys));
+                request.Query,
+                request.Country,
+                request.Language,
+                request.Sort);
 
             if (applicableProviders.Count == 0)
             {
-                logger.LogWarning("No providers can handle the given parameters");
+                logger.LogWarning("No providers can handle the given request");
                 return new AggregationResponse
                 {
                     TotalResponseTime = stopwatch.Elapsed,
@@ -42,7 +45,7 @@ namespace AggregatorService.Services.Aggregation
 
             // Execute all provider calls in parallel
             var tasks = applicableProviders
-                .Select(provider => FetchFromProviderAsync(provider, request.Parameters, cancellationToken))
+                .Select(provider => FetchFromProviderAsync(provider, request, cancellationToken))
                 .ToList();
 
             var results = await Task.WhenAll(tasks);
@@ -67,18 +70,18 @@ namespace AggregatorService.Services.Aggregation
         }
 
         /// <summary>
-        /// Fetches data from a single provider with error handling
-        /// Individual provider failures do not affect other providers
+        /// Fetches data from a single provider with error handling.
+        /// Individual provider failures do not affect other providers.
         /// </summary>
         private async Task<ApiResponse> FetchFromProviderAsync(
             IExternalApiProvider provider,
-            Dictionary<string, string> parameters,
+            AggregationRequest request,
             CancellationToken cancellationToken)
         {
             try
             {
                 logger.LogDebug("Calling provider: {Provider}", provider.Name);
-                return await provider.FetchAsync(parameters, cancellationToken);
+                return await provider.FetchAsync(request, cancellationToken);
             }
             catch (Exception ex)
             {

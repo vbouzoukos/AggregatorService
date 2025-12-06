@@ -8,10 +8,8 @@ namespace AggregatorService.Services.Statistics
     /// </summary>
     public class StatisticsService : IStatisticsService
     {
-        // Thread-safe storage for request records
         private readonly ConcurrentDictionary<string, ConcurrentBag<RequestRecord>> records = new();
 
-        // Performance bucket thresholds in milliseconds
         private const int FastThresholdMs = 100;
         private const int AverageThresholdMs = 200;
 
@@ -24,11 +22,11 @@ namespace AggregatorService.Services.Statistics
                 Timestamp = DateTime.UtcNow
             };
 
-            records.AddOrUpdate( providerName, _ => [record], (_, bag) =>
-                {
-                    bag.Add(record);
-                    return bag;
-                });
+            records.AddOrUpdate(providerName, _ => [record], (_, bag) =>
+            {
+                bag.Add(record);
+                return bag;
+            });
         }
 
         public StatisticsResponse GetStatistics()
@@ -63,14 +61,44 @@ namespace AggregatorService.Services.Statistics
             return response;
         }
 
+        public ProviderPerformanceSnapshot GetProviderSnapshot(string providerName, TimeSpan recentWindow)
+        {
+            if (!records.TryGetValue(providerName, out var providerRecords))
+            {
+                return new ProviderPerformanceSnapshot { ProviderName = providerName };
+            }
+
+            var recordsList = providerRecords.ToList();
+            if (recordsList.Count == 0)
+            {
+                return new ProviderPerformanceSnapshot { ProviderName = providerName };
+            }
+
+            var cutoffTime = DateTime.UtcNow - recentWindow;
+            var recentRecords = recordsList.Where(r => r.Timestamp >= cutoffTime).ToList();
+
+            return new ProviderPerformanceSnapshot
+            {
+                ProviderName = providerName,
+                OverallAverageMs = Math.Round(recordsList.Average(r => r.ResponseTimeMs), 2),
+                OverallRequestCount = recordsList.Count,
+                RecentAverageMs = recentRecords.Count > 0
+                    ? Math.Round(recentRecords.Average(r => r.ResponseTimeMs), 2)
+                    : null,
+                RecentRequestCount = recentRecords.Count
+            };
+        }
+
+        public IEnumerable<string> GetProviderNames()
+        {
+            return [.. records.Keys];
+        }
+
         public void Reset()
         {
             records.Clear();
         }
 
-        /// <summary>
-        /// Internal record for storing request data
-        /// </summary>
         private sealed class RequestRecord
         {
             public double ResponseTimeMs { get; set; }
@@ -78,4 +106,5 @@ namespace AggregatorService.Services.Statistics
             public DateTime Timestamp { get; set; }
         }
     }
+
 }

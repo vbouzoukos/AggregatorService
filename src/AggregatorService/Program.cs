@@ -2,6 +2,7 @@ using AggregatorService.Middleware;
 using AggregatorService.Services.Aggregation;
 using AggregatorService.Services.Authorise;
 using AggregatorService.Services.Caching;
+using AggregatorService.Services.Monitoring;
 using AggregatorService.Services.Provider;
 using AggregatorService.Services.Provider.Base;
 using AggregatorService.Services.Providers;
@@ -62,7 +63,12 @@ builder.Services.AddScoped<IAggregationService, AggregationService>();
 //--------------------------------------------------------------------------------
 builder.Services.AddScoped<IExternalApiProvider, WeatherProvider>();
 builder.Services.AddScoped<IExternalApiProvider, NewsProvider>();
+// Statistics service (singleton to maintain state across requests)
 builder.Services.AddSingleton<IStatisticsService, StatisticsService>();
+
+// Performance monitor background service
+builder.Services.AddHostedService<PerformanceMonitorService>();
+
 // Caching
 // Currently using in-memory distributed cache for development
 // To enable Redis, replace AddDistributedMemoryCache() with:

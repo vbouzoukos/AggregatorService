@@ -1,15 +1,18 @@
-﻿using AggregatorService.Models.Responses;
+﻿using AggregatorService.Models.Requests;
+using AggregatorService.Models.Responses;
 using AggregatorService.Services.Caching;
 using AggregatorService.Services.Provider.Base;
-using AggregatorService.Services.Providers;
 using AggregatorService.Services.Statistics;
-using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
 namespace AggregatorService.Services.Provider
 {
+    /// <summary>
+    /// Provider for News API
+    /// Filters, sort mappings, and required parameters configured in appsettings.json
+    /// </summary>
     public class NewsProvider(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
@@ -17,34 +20,56 @@ namespace AggregatorService.Services.Provider
         IStatisticsService statisticsService,
         ILogger<NewsProvider> logger) : IExternalApiProvider
     {
-        private const string cacheNewsKey = "news:";
-        private const string configKey = "ExternalApis:NewsApi";
+        private const string CacheKeyPrefix = "news:";
+        private const string ConfigKey = "ExternalApis:NewsApi";
+
         public string Name => "News";
 
-        private readonly TimeSpan cacheExpiration = TimeSpan.FromMinutes(configuration.GetValue<int>($"{configKey}:CacheMinutes"));
-        public bool CanHandle(Dictionary<string, string> parameters)
+        private readonly TimeSpan cacheExpiration = TimeSpan.FromMinutes(
+            configuration.GetValue<int>($"{ConfigKey}:CacheMinutes"));
+
+        public bool CanHandle(AggregationRequest request)
         {
-            return parameters.ContainsKey("q");
+            var required = configuration.GetSection($"{ConfigKey}:Required").Get<string[]>() ?? [];
+            var filters = configuration.GetSection($"{ConfigKey}:Filters").Get<Dictionary<string, string>>() ?? [];
+
+            // Check if any required parameter exists with a value in filters or parameters
+            foreach (var req in required)
+            {
+                // Check if required param is satisfied by a filter
+                var filterMatch = filters.FirstOrDefault(f => f.Value.Equals(req, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(filterMatch.Key))
+                {
+                    var filterValue = GetFilterValue(request, filterMatch.Key);
+                    if (!string.IsNullOrEmpty(filterValue))
+                    {
+                        return true;
+                    }
+                }
+
+                // Check if required param exists in parameters with a value
+                if (request.Parameters.TryGetValue(req, out var paramValue) && !string.IsNullOrEmpty(paramValue))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="parameters"></param>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        public async Task<ApiResponse> FetchAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken)
+        public async Task<ApiResponse> FetchAsync(AggregationRequest request, CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
 
             try
             {
-                parameters.TryGetValue("q", out var q);
-                if (string.IsNullOrEmpty(q))
-                {
-                    throw new ArgumentException("q parameter cannot be empty");
-                }
-                var newsData = await GetNewsDataAsync(q, parameters, cancellationToken);
+                // Build working parameters from filters and request parameters
+                var workingParams = BuildWorkingParameters(request);
+
+                // Apply sort mapping
+                ApplySortMapping(workingParams, request.Sort);
+
+                var newsData = await GetNewsDataAsync(workingParams, cancellationToken);
                 stopwatch.Stop();
                 statisticsService.RecordRequest(Name, stopwatch.Elapsed, true);
 
@@ -71,16 +96,63 @@ namespace AggregatorService.Services.Provider
                 };
             }
         }
+
+        private Dictionary<string, string> BuildWorkingParameters(AggregationRequest request)
+        {
+            var workingParams = new Dictionary<string, string>(request.Parameters, StringComparer.OrdinalIgnoreCase);
+            var filters = configuration.GetSection($"{ConfigKey}:Filters").Get<Dictionary<string, string>>() ?? [];
+
+            // Apply filters from request to working parameters
+            foreach (var filter in filters)
+            {
+                var filterValue = GetFilterValue(request, filter.Key);
+                if (!string.IsNullOrEmpty(filterValue))
+                {
+                    workingParams[filter.Value] = filterValue;
+                }
+            }
+
+            return workingParams;
+        }
+
+        private static string? GetFilterValue(AggregationRequest request, string filterName)
+        {
+            return filterName.ToLowerInvariant() switch
+            {
+                "query" => request.Query,
+                "country" => request.Country,
+                "language" => request.Language,
+                _ => null
+            };
+        }
+
+        private void ApplySortMapping(Dictionary<string, string> parameters, SortOption sort)
+        {
+            var sortParameter = configuration[$"{ConfigKey}:SortParameter"];
+            var sortMappings = configuration.GetSection($"{ConfigKey}:SortMappings")
+                .Get<Dictionary<string, string?>>();
+
+            if (string.IsNullOrEmpty(sortParameter) || sortMappings == null)
+            {
+                logger.LogDebug("{Name} does not support sorting", Name);
+                return;
+            }
+
+            var sortKey = sort.ToString();
+            if (sortMappings.TryGetValue(sortKey, out var apiSortValue) && !string.IsNullOrEmpty(apiSortValue))
+            {
+                parameters[sortParameter] = apiSortValue;
+                logger.LogDebug("Applied sort mapping: {Sort} -> {Param}={Value}", sort, sortParameter, apiSortValue);
+            }
+        }
+
         private async Task<dynamic?> GetNewsDataAsync(
-            string q,
             Dictionary<string, string> parameters,
             CancellationToken cancellationToken)
         {
-            // Build query string without API key
-            var queryString = BuildQueryString(q, parameters);
-            var cacheKey = $"{cacheNewsKey}{queryString}".ToLowerInvariant();
+            var queryString = BuildQueryString(parameters);
+            var cacheKey = $"{CacheKeyPrefix}{queryString}".ToLowerInvariant();
 
-            // Check cache first
             var cached = await cacheService.GetAsync<JsonElement>(cacheKey, cancellationToken);
             if (cached.ValueKind != JsonValueKind.Undefined)
             {
@@ -88,8 +160,8 @@ namespace AggregatorService.Services.Provider
                 return cached;
             }
 
-            var apiKey = configuration[$"{configKey}:ApiKey"];
-            var baseUrl = configuration[$"{configKey}:Url"];
+            var apiKey = configuration[$"{ConfigKey}:ApiKey"];
+            var baseUrl = configuration[$"{ConfigKey}:Url"];
             var url = $"{baseUrl}?{queryString}&apiKey={apiKey}";
 
             var client = httpClientFactory.CreateClient();
@@ -97,31 +169,38 @@ namespace AggregatorService.Services.Provider
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var weatherData = JsonSerializer.Deserialize<JsonElement>(content);
+            var newsData = JsonSerializer.Deserialize<JsonElement>(content);
 
-            // Cache the weather data
-            await cacheService.SetAsync(cacheKey, weatherData, cacheExpiration, cancellationToken);
-            logger.LogDebug("Cached weather data for {CacheKey}", cacheKey);
+            await cacheService.SetAsync(cacheKey, newsData, cacheExpiration, cancellationToken);
+            logger.LogDebug("Cached news data for {CacheKey}", cacheKey);
 
-            return weatherData;
+            return newsData;
         }
 
-        private string BuildQueryString(string q, Dictionary<string, string> parameters)
+        private string BuildQueryString(Dictionary<string, string> parameters)
         {
             var queryBuilder = new StringBuilder();
-            queryBuilder.Append($"q={q}");
-            string[] apiParams = configuration.GetSection($"{configKey}:parameters").Get<string[]>()!;
 
-            foreach (var param in apiParams)
+            // Get all parameter keys: filters + configured parameters
+            var filters = configuration.GetSection($"{ConfigKey}:Filters").Get<Dictionary<string, string>>() ?? [];
+            var apiParams = configuration.GetSection($"{ConfigKey}:Parameters").Get<string[]>() ?? [];
+
+            // Combine filter values and api params
+            var allParams = filters.Values.Concat(apiParams).Distinct();
+
+            foreach (var param in allParams)
             {
-                if (parameters.TryGetValue(param, out var paramValue))
+                if (parameters.TryGetValue(param, out var paramValue) && !string.IsNullOrEmpty(paramValue))
                 {
-                    queryBuilder.Append($"&{param}={Uri.EscapeDataString(paramValue)}");
+                    if (queryBuilder.Length > 0)
+                    {
+                        queryBuilder.Append('&');
+                    }
+                    queryBuilder.Append($"{param}={Uri.EscapeDataString(paramValue)}");
                 }
             }
 
             return queryBuilder.ToString();
         }
-
     }
 }

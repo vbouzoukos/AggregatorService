@@ -1,10 +1,10 @@
-﻿using AggregatorService.Services.Caching;
+﻿using AggregatorService.Models.Requests;
+using AggregatorService.Services.Caching;
 using AggregatorService.Services.Providers;
 using AggregatorService.Services.Statistics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
-using System.Text.Json;
 
 namespace AggregatorService.Tests.Services.Providers
 {
@@ -19,7 +19,6 @@ namespace AggregatorService.Tests.Services.Providers
 
         public WeatherProviderTests()
         {
-            // Load configuration securely from secrets file (ignored by git) and environment variables
             configuration = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: true)
@@ -27,7 +26,6 @@ namespace AggregatorService.Tests.Services.Providers
                 .AddEnvironmentVariables()
                 .Build();
 
-            // Fail fast if API key is missing
             var apiKey = configuration["ExternalApis:OpenWeatherMap:ApiKey"];
             if (string.IsNullOrEmpty(apiKey))
             {
@@ -36,19 +34,14 @@ namespace AggregatorService.Tests.Services.Providers
                     "or set environment variable ExternalApis__OpenWeatherMap__ApiKey");
             }
 
-            // HttpClientFactory returns a new client each time - no need to manage lifecycle
             var httpClientFactoryMock = new Mock<IHttpClientFactory>();
             httpClientFactoryMock
                 .Setup(f => f.CreateClient(It.IsAny<string>()))
                 .Returns(() => new HttpClient());
             httpClientFactory = httpClientFactoryMock.Object;
 
-            // Type-safe cache stub
             cacheService = new CacheServiceStub();
-
-            // Real statistics service
             statisticsService = new StatisticsService();
-
             loggerMock = new Mock<ILogger<WeatherProvider>>();
 
             provider = new WeatherProvider(
@@ -65,53 +58,59 @@ namespace AggregatorService.Tests.Services.Providers
         public void CanHandle_WithCity_ReturnsTrue()
         {
             // Arrange
-            var parameters = new Dictionary<string, string> { { "city", "London" } };
-
-            // Act
-            var result = provider.CanHandle(parameters);
-
-            // Assert
-            Assert.True(result);
-        }
-
-        [Fact]
-        public void CanHandle_WithLatAndLon_ReturnsTrue()
-        {
-            // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "lat", "51.5074" },
-                { "lon", "-0.1278" }
+                Parameters = new Dictionary<string, string> { { "city", "London" } }
             };
 
             // Act
-            var result = provider.CanHandle(parameters);
+            var result = provider.CanHandle(request);
 
             // Assert
             Assert.True(result);
         }
 
         [Fact]
-        public void CanHandle_WithOnlyLat_ReturnsFalse()
+        public void CanHandle_WithCountryFilter_ReturnsFalse()
         {
-            // Arrange
-            var parameters = new Dictionary<string, string> { { "lat", "51.5074" } };
+            // Arrange - Country alone is not in Required, only in Filters
+            var request = new AggregationRequest
+            {
+                Country = "GB"
+            };
 
             // Act
-            var result = provider.CanHandle(parameters);
+            var result = provider.CanHandle(request);
 
             // Assert
             Assert.False(result);
         }
 
         [Fact]
+        public void CanHandle_WithCityAndCountryFilter_ReturnsTrue()
+        {
+            // Arrange
+            var request = new AggregationRequest
+            {
+                Country = "GB",
+                Parameters = new Dictionary<string, string> { { "city", "London" } }
+            };
+
+            // Act
+            var result = provider.CanHandle(request);
+
+            // Assert
+            Assert.True(result);
+        }
+
+        [Fact]
         public void CanHandle_WithEmptyParameters_ReturnsFalse()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>();
+            var request = new AggregationRequest();
 
             // Act
-            var result = provider.CanHandle(parameters);
+            var result = provider.CanHandle(request);
 
             // Assert
             Assert.False(result);
@@ -121,14 +120,30 @@ namespace AggregatorService.Tests.Services.Providers
         public void CanHandle_WithUnrelatedParameters_ReturnsFalse()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "query", "technology" },
-                { "category", "news" }
+                Query = "technology",
+                Parameters = new Dictionary<string, string> { { "category", "news" } }
             };
 
             // Act
-            var result = provider.CanHandle(parameters);
+            var result = provider.CanHandle(request);
+
+            // Assert
+            Assert.False(result);
+        }
+
+        [Fact]
+        public void CanHandle_WithEmptyCityValue_ReturnsFalse()
+        {
+            // Arrange
+            var request = new AggregationRequest
+            {
+                Parameters = new Dictionary<string, string> { { "city", "" } }
+            };
+
+            // Act
+            var result = provider.CanHandle(request);
 
             // Assert
             Assert.False(result);
@@ -142,19 +157,22 @@ namespace AggregatorService.Tests.Services.Providers
         public async Task FetchAsync_WithCoordinates_ReturnsRealWeatherData()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "lat", "51.5074" },
-                { "lon", "-0.1278" },
-                { "units", "metric" }
+                Parameters = new Dictionary<string, string>
+                {
+                    { "lat", "51.5074" },
+                    { "lon", "-0.1278" },
+                    { "units", "metric" }
+                }
             };
 
             // Act
-            var result = await provider.FetchAsync(parameters, CancellationToken.None);
+            var result = await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
-            Assert.Equal("weather", result.Provider);
+            Assert.Equal("Weather", result.Provider);
             Assert.NotNull(result.Data);
             Assert.True(result.ResponseTime.TotalMilliseconds > 0);
         }
@@ -163,19 +181,22 @@ namespace AggregatorService.Tests.Services.Providers
         public async Task FetchAsync_WithCity_GeocodesAndReturnsRealWeatherData()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "city", "London" },
-                { "country", "GB" },
-                { "units", "metric" }
+                Country = "GB",
+                Parameters = new Dictionary<string, string>
+                {
+                    { "city", "London" },
+                    { "units", "metric" }
+                }
             };
 
             // Act
-            var result = await provider.FetchAsync(parameters, CancellationToken.None);
+            var result = await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
-            Assert.Equal("weather", result.Provider);
+            Assert.Equal("Weather", result.Provider);
             Assert.NotNull(result.Data);
         }
 
@@ -183,20 +204,46 @@ namespace AggregatorService.Tests.Services.Providers
         public async Task FetchAsync_WithCityStateCountry_GeocodesAndReturnsRealWeatherData()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "city", "New York" },
-                { "state", "NY" },
-                { "country", "US" },
-                { "units", "imperial" }
+                Country = "US",
+                Parameters = new Dictionary<string, string>
+                {
+                    { "city", "New York" },
+                    { "state", "NY" },
+                    { "units", "imperial" }
+                }
             };
 
             // Act
-            var result = await provider.FetchAsync(parameters, CancellationToken.None);
+            var result = await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
-            Assert.Equal("weather", result.Provider);
+            Assert.Equal("Weather", result.Provider);
+            Assert.NotNull(result.Data);
+        }
+
+        [Fact]
+        public async Task FetchAsync_WithLanguageFilter_AppliesLangParameter()
+        {
+            // Arrange
+            var request = new AggregationRequest
+            {
+                Language = "de",
+                Parameters = new Dictionary<string, string>
+                {
+                    { "city", "Berlin" },
+                    { "units", "metric" }
+                }
+            };
+
+            // Act
+            var result = await provider.FetchAsync(request, CancellationToken.None);
+
+            // Assert
+            Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
+            Assert.Equal("Weather", result.Provider);
             Assert.NotNull(result.Data);
         }
 
@@ -204,13 +251,16 @@ namespace AggregatorService.Tests.Services.Providers
         public async Task FetchAsync_WithNonExistentCity_ReturnsError()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "city", "ThisCityDoesNotExist12345" }
+                Parameters = new Dictionary<string, string>
+                {
+                    { "city", "ThisCityDoesNotExist12345" }
+                }
             };
 
             // Act
-            var result = await provider.FetchAsync(parameters, CancellationToken.None);
+            var result = await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             Assert.False(result.IsSuccess);
@@ -222,18 +272,21 @@ namespace AggregatorService.Tests.Services.Providers
         {
             // Arrange
             statisticsService.Reset();
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "lat", "51.5074" },
-                { "lon", "-0.1278" }
+                Parameters = new Dictionary<string, string>
+                {
+                    { "lat", "51.5074" },
+                    { "lon", "-0.1278" }
+                }
             };
 
             // Act
-            await provider.FetchAsync(parameters, CancellationToken.None);
+            await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             var stats = statisticsService.GetStatistics();
-            var weatherStats = stats.Providers.FirstOrDefault(p => p.ProviderName == "weather");
+            var weatherStats = stats.Providers.FirstOrDefault(p => p.ProviderName == "Weather");
             Assert.NotNull(weatherStats);
             Assert.Equal(1, weatherStats.TotalRequests);
             Assert.Equal(1, weatherStats.SuccessfulRequests);
@@ -244,17 +297,20 @@ namespace AggregatorService.Tests.Services.Providers
         {
             // Arrange
             statisticsService.Reset();
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "city", "ThisCityDoesNotExist12345" }
+                Parameters = new Dictionary<string, string>
+                {
+                    { "city", "ThisCityDoesNotExist12345" }
+                }
             };
 
             // Act
-            await provider.FetchAsync(parameters, CancellationToken.None);
+            await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             var stats = statisticsService.GetStatistics();
-            var weatherStats = stats.Providers.FirstOrDefault(p => p.ProviderName == "weather");
+            var weatherStats = stats.Providers.FirstOrDefault(p => p.ProviderName == "Weather");
             Assert.NotNull(weatherStats);
             Assert.Equal(1, weatherStats.TotalRequests);
             Assert.Equal(1, weatherStats.FailedRequests);
@@ -264,16 +320,19 @@ namespace AggregatorService.Tests.Services.Providers
         public async Task FetchAsync_WithExcludeParameter_ReturnsFilteredData()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "lat", "51.5074" },
-                { "lon", "-0.1278" },
-                { "exclude", "minutely,hourly,daily,alerts" },
-                { "units", "metric" }
+                Parameters = new Dictionary<string, string>
+                {
+                    { "lat", "51.5074" },
+                    { "lon", "-0.1278" },
+                    { "exclude", "minutely,hourly,daily,alerts" },
+                    { "units", "metric" }
+                }
             };
 
             // Act
-            var result = await provider.FetchAsync(parameters, CancellationToken.None);
+            var result = await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
@@ -288,15 +347,18 @@ namespace AggregatorService.Tests.Services.Providers
         public async Task FetchAsync_WeatherCacheKeyDoesNotContainApiKey()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "lat", "51.5074" },
-                { "lon", "-0.1278" },
-                { "units", "metric" }
+                Parameters = new Dictionary<string, string>
+                {
+                    { "lat", "51.5074" },
+                    { "lon", "-0.1278" },
+                    { "units", "metric" }
+                }
             };
 
             // Act
-            var result = await provider.FetchAsync(parameters, CancellationToken.None);
+            var result = await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
@@ -310,14 +372,17 @@ namespace AggregatorService.Tests.Services.Providers
         public async Task FetchAsync_GeocodingCacheKeyDoesNotContainApiKey()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "city", "London" },
-                { "country", "GB" }
+                Country = "GB",
+                Parameters = new Dictionary<string, string>
+                {
+                    { "city", "London" }
+                }
             };
 
             // Act
-            var result = await provider.FetchAsync(parameters, CancellationToken.None);
+            var result = await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
@@ -331,14 +396,17 @@ namespace AggregatorService.Tests.Services.Providers
         public async Task FetchAsync_CachesWeatherData()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "lat", "51.5074" },
-                { "lon", "-0.1278" }
+                Parameters = new Dictionary<string, string>
+                {
+                    { "lat", "51.5074" },
+                    { "lon", "-0.1278" }
+                }
             };
 
             // Act
-            var result = await provider.FetchAsync(parameters, CancellationToken.None);
+            var result = await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
@@ -351,14 +419,17 @@ namespace AggregatorService.Tests.Services.Providers
         public async Task FetchAsync_CachesGeocodingData()
         {
             // Arrange
-            var parameters = new Dictionary<string, string>
+            var request = new AggregationRequest
             {
-                { "city", "Paris" },
-                { "country", "FR" }
+                Country = "FR",
+                Parameters = new Dictionary<string, string>
+                {
+                    { "city", "Paris" }
+                }
             };
 
             // Act
-            var result = await provider.FetchAsync(parameters, CancellationToken.None);
+            var result = await provider.FetchAsync(request, CancellationToken.None);
 
             // Assert
             Assert.True(result.IsSuccess, $"API call failed: {result.ErrorMessage}");
