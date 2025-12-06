@@ -62,7 +62,7 @@ builder.Services.AddScoped<IExternalApiProvider, WeatherProvider>();
 // Caching
 // Currently using in-memory distributed cache for development
 // To enable Redis, replace AddDistributedMemoryCache() with:
-//   builder.Services.AddStackExchangeRedisCache(options => options.Configuration = "localhost:6379");
+//  Redis "builder.Services.AddStackExchangeRedisCache(options => options.Configuration = "localhost:6379");"
 // Two-tier caching improvement: Use IMemoryCache (L1) for fast local access,
 // fall back to Redis (L2) on miss, then populate L1 for subsequent requests
 builder.Services.AddDistributedMemoryCache();
@@ -105,4 +105,4 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.Run();
+await app.RunAsync();

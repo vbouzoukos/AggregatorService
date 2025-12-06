@@ -1,10 +1,15 @@
-﻿using System.Net;
+﻿using Microsoft.AspNetCore.Http.Json;
+using System.Net;
 using System.Text.Json;
 
 namespace AggregatorService.Middleware
 {
     public class GlobalErrorHandlerMiddleware(RequestDelegate next, ILogger<GlobalErrorHandlerMiddleware> logger)
     {
+        static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
         public async Task InvokeAsync(HttpContext context)
         {
             try
@@ -45,10 +50,7 @@ namespace AggregatorService.Middleware
                 Message = message
             };
 
-            var jsonResponse = JsonSerializer.Serialize(response, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
+            var jsonResponse = JsonSerializer.Serialize(response, JsonOptions);
 
             await context.Response.WriteAsync(jsonResponse);
         }

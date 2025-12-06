@@ -251,16 +251,16 @@ namespace AggregatorService.Services.Providers
             return weatherData;
         }
 
-        private class GeocodingResult
+        private sealed class GeocodingResult
         {
             public string Lat { get; set; } = string.Empty;
             public string Lon { get; set; } = string.Empty;
         }
 
-        private class GeocodingApiResponse
+        private sealed class GeocodingApiResponse
         {
-            public double Lat { get; set; }
-            public double Lon { get; set; }
+            public double Lat { get; set; } = 0.0;
+            public double Lon { get; set; } = 0.0;
             public string Name { get; set; } = string.Empty;
             public string Country { get; set; } = string.Empty;
             public string State { get; set; } = string.Empty;

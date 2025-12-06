@@ -13,6 +13,6 @@
         /// <summary>
         /// Statistics for each provider
         /// </summary>
-        public List<ProviderStatistics> Providers { get; set; } = new();
+        public List<ProviderStatistics> Providers { get; set; } = [];
     }
 }

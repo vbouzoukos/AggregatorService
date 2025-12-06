@@ -13,7 +13,6 @@ namespace AggregatorService.Services.Authorise
     public class TokenService(IConfiguration configuration, IIdentityProvider identityProvider) : ITokenService
     {
 
-
         /// <summary>
         /// Validates user credentials and generates a JWT token
         /// </summary>

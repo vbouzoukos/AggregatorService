@@ -9,7 +9,7 @@ namespace AggregatorService.Services.Statistics
     public class StatisticsService : IStatisticsService
     {
         // Thread-safe storage for request records
-        private readonly ConcurrentDictionary<string, ConcurrentBag<RequestRecord>> _records = new();
+        private readonly ConcurrentDictionary<string, ConcurrentBag<RequestRecord>> records = new();
 
         // Performance bucket thresholds in milliseconds
         private const int FastThresholdMs = 100;
@@ -24,10 +24,7 @@ namespace AggregatorService.Services.Statistics
                 Timestamp = DateTime.UtcNow
             };
 
-            _records.AddOrUpdate(
-                providerName,
-                _ => new ConcurrentBag<RequestRecord> { record },
-                (_, bag) =>
+            records.AddOrUpdate( providerName, _ => [record], (_, bag) =>
                 {
                     bag.Add(record);
                     return bag;
@@ -38,9 +35,9 @@ namespace AggregatorService.Services.Statistics
         {
             var response = new StatisticsResponse();
 
-            foreach (var (providerName, records) in _records)
+            foreach (var (providerName, precs) in records)
             {
-                var recordsList = records.ToList();
+                var recordsList = precs.ToList();
 
                 if (recordsList.Count == 0)
                     continue;
@@ -68,13 +65,13 @@ namespace AggregatorService.Services.Statistics
 
         public void Reset()
         {
-            _records.Clear();
+            records.Clear();
         }
 
         /// <summary>
         /// Internal record for storing request data
         /// </summary>
-        private class RequestRecord
+        private sealed class RequestRecord
         {
             public double ResponseTimeMs { get; set; }
             public bool IsSuccess { get; set; }
