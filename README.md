@@ -107,16 +107,17 @@ cd AggregatorService
 
 The application uses multiple configuration files:
 
-**appsettings.json** (tracked in git - no secrets)
+**appsettings.json** Aggregator service Configuration
 
 ```json
 {
-  "PerformanceMonitor": {
-    "Enabled": true,
-    "CheckIntervalSeconds": 30,
-    "RecentWindowMinutes": 5,
-    "AnomalyThresholdPercent": 50
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
   },
+  "AllowedHosts": "*",
   "JwtSettings": {
     "Issuer": "AggregatorService",
     "Audience": "AggregatorServiceAudience",
@@ -143,7 +144,7 @@ The application uses multiple configuration files:
       "Required": [ "q" ],
       "Filters": {
         "Query": "q",
-        "Language": "lang"
+        "Language": "language"
       },
       "SortParameter": "sortBy",
       "SortMappings": {
@@ -169,14 +170,27 @@ The application uses multiple configuration files:
         "Relevance": null,
         "Popularity": "rating"
       }
+    },
+    "OpenAI": {
+      "Url": "https://api.openai.com/v1/chat/completions",
+      "Model": "gpt-4.1-nano",
+      "CacheMinutes": 60,
+      "MaxTokens": 500,
+      "Temperature": 0.7
     }
+  },
+  "PerformanceMonitor": {
+    "Enabled": true,
+    "CheckIntervalSeconds": 30,
+    "RecentWindowMinutes": 5,
+    "AnomalyThresholdPercent": 50
   }
 }
 ```
 
 ### Step 3: Configure Secrets for Development
 
-Create `appsettings.Development.json` in `src/AggregatorService/` (this file is git ignored):
+Create `appsettings.Development.json` in `src/AggregatorService/` for security reasons this file is not tracked:
 
 ```json
 {
@@ -189,6 +203,9 @@ Create `appsettings.Development.json` in `src/AggregatorService/` (this file is 
     },
     "NewsApi": {
       "ApiKey": "YourNewsApiKey"
+    },
+    "OpenAI": {
+      "ApiKey": "OpenAIKey"
     }
   }
 }
@@ -196,7 +213,7 @@ Create `appsettings.Development.json` in `src/AggregatorService/` (this file is 
 
 ### Step 4: Configure Secrets for Tests
 
-Create `appsettings.Secrets.json` in `tests/AggregatorService.Tests/` (this file is git ignored):
+Create `appsettings.Secrets.json` in `tests/AggregatorService.Tests/` for security reasons this file is not tracked:
 
 ```json
 {
@@ -206,6 +223,9 @@ Create `appsettings.Secrets.json` in `tests/AggregatorService.Tests/` (this file
     },
     "NewsApi": {
       "ApiKey": "YourNewsApiKey"
+    },
+    "OpenAI": {
+      "ApiKey": "OpenAIKey"
     }
   }
 }
@@ -218,27 +238,30 @@ Create `appsettings.Secrets.json` in `tests/AggregatorService.Tests/` (this file
 | OpenWeatherMap | https://openweathermap.org/api | Free tier or One Call API 3.0 |
 | NewsAPI | https://newsapi.org/ | Developer (free) |
 | Open Library | https://openlibrary.org/developers/api | No API key required |
-
+| Open AI | https://platform.openai.com/ | Open AI Key required |
 ### Environment Variables (Production/CI-CD)
 
-For production or CI/CD, use environment variables instead of secret files:
+For production or CI/CD, use environment variables instead of secret files and ensure there are secured:
 
 ```bash
 # Linux/Mac
 export JwtSettings__SecretKey="YourJwtSecretKey-MinLength32Characters!"
 export ExternalApis__OpenWeatherMap__ApiKey="your-weather-api-key"
 export ExternalApis__NewsApi__ApiKey="your-news-api-key"
+export ExternalApis__OpenAI__ApiKey="openaiapi-key"
 
 # Windows PowerShell
 $env:JwtSettings__SecretKey="YourJwtSecretKey-MinLength32Characters!"
 $env:ExternalApis__OpenWeatherMap__ApiKey="your-weather-api-key"
 $env:ExternalApis__NewsApi__ApiKey="your-news-api-key"
+$env:ExternalApis__OpenAI__ApiKey="openaiapi-key"
 
 # Docker
 docker run \
   -e JwtSettings__SecretKey="your-jwt-key" \
   -e ExternalApis__OpenWeatherMap__ApiKey="your-weather-api-key" \
   -e ExternalApis__NewsApi__ApiKey="your-news-api-key" \
+  -e ExternalApis__OpenAI__ApiKey="openaiapi-key" \
   your-image
 ```
 
@@ -249,6 +272,7 @@ env:
   JwtSettings__SecretKey: ${{ secrets.JWT_SECRET_KEY }}
   ExternalApis__OpenWeatherMap__ApiKey: ${{ secrets.OPENWEATHERMAP_API_KEY }}
   ExternalApis__NewsApi__ApiKey: ${{ secrets.NEWSAPI_API_KEY }}
+  ExternalApis__OpenAI__ApiKey: ${{ secrets.OPENAI_API_KEY }}
 ```
 
 ---
