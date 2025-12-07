@@ -10,6 +10,9 @@ namespace AggregatorService.Services.Statistics
         /// <summary>
         /// Records a request statistic for a provider
         /// </summary>
+        /// <param name="providerName">Provider Name</param>
+        /// <param name="responseTime">Response Time</param>
+        /// <param name="isSuccess">Is successful</param>
         void RecordRequest(string providerName, TimeSpan responseTime, bool isSuccess);
 
         /// <summary>
@@ -26,8 +29,9 @@ namespace AggregatorService.Services.Statistics
         ProviderPerformanceSnapshot GetProviderSnapshot(string providerName, TimeSpan recentWindow);
 
         /// <summary>
-        /// Gets all registered provider names
+        /// Gets all registered provider names who have recorded statistics
         /// </summary>
+        /// <returns>Provider names collection</returns>
         IEnumerable<string> GetProviderNames();
 
         /// <summary>
