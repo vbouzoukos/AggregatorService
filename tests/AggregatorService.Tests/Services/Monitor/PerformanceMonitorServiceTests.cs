@@ -80,7 +80,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(50);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert
@@ -104,7 +104,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(50);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert
@@ -138,7 +138,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500); // Wait for at least one interval
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert
@@ -181,7 +181,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert
@@ -218,7 +218,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert
@@ -255,7 +255,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert - Should log debug (normal), not warning
@@ -294,7 +294,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert - Should not log any anomaly or normal status
@@ -329,7 +329,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert
@@ -364,7 +364,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert
@@ -404,7 +404,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert
@@ -464,7 +464,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert - Both should be logged appropriately
@@ -512,7 +512,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(2500); // Wait for multiple intervals
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert - Should log error but continue running
@@ -537,7 +537,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert - Should not throw, no anomaly logs
@@ -581,7 +581,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert - Should use 10 minute window
@@ -620,7 +620,7 @@ namespace AggregatorService.Tests.Services.Monitor
             // Act
             await service.StartAsync(cts.Token);
             await Task.Delay(1500);
-            cts.Cancel();
+            await cts.CancelAsync();
             await service.StopAsync(CancellationToken.None);
 
             // Assert - Should detect anomaly at 25% threshold

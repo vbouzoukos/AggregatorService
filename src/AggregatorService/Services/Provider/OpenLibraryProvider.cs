@@ -81,6 +81,26 @@ namespace AggregatorService.Services.Provider
                     ResponseTime = stopwatch.Elapsed
                 };
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Respect cancellation - rethrow to let caller handle
+                throw;
+            }
+            catch (HttpRequestException ex)
+            {
+                var statusInfo = ex.StatusCode.HasValue ? $" (HTTP {(int)ex.StatusCode})" : "";
+                logger.LogWarning(ex, "HTTP error fetching {Name} data Code: {StatusInfo}", Name, statusInfo);
+                stopwatch.Stop();
+                statisticsService.RecordRequest(Name, stopwatch.Elapsed, false);
+
+                return new ApiResponse
+                {
+                    Provider = Name,
+                    IsSuccess = false,
+                    ErrorMessage = $"HTTP error{statusInfo}: {ex.Message}",
+                    ResponseTime = stopwatch.Elapsed
+                };
+            }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error fetching {Name} data", Name);

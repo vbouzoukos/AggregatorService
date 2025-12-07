@@ -100,9 +100,29 @@ namespace AggregatorService.Services.Provider
                     ResponseTime = stopwatch.Elapsed
                 };
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Respect cancellation - rethrow to let caller handle
+                throw;
+            }
+            catch (HttpRequestException ex)
+            {
+                var statusInfo = ex.StatusCode.HasValue ? $"{(int)ex.StatusCode} {ex.StatusCode}" : "Unknown";
+                logger.LogWarning(ex, "HTTP error fetching {Name} data. Code: {StatusInfo}", Name, statusInfo);
+                stopwatch.Stop();
+                statisticsService.RecordRequest(Name, stopwatch.Elapsed, false);
+
+                return new ApiResponse
+                {
+                    Provider = Name,
+                    IsSuccess = false,
+                    ErrorMessage = $"HTTP error ({statusInfo}): {ex.Message}",
+                    ResponseTime = stopwatch.Elapsed
+                };
+            }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error fetching from OpenAI");
+                logger.LogError(ex, "Error fetching from {Name}", Name);
                 stopwatch.Stop();
                 statisticsService.RecordRequest(Name, stopwatch.Elapsed, false);
 

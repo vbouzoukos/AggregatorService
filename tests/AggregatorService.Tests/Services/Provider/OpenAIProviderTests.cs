@@ -1,5 +1,4 @@
 ﻿using AggregatorService.Models.Requests;
-using AggregatorService.Services.Caching;
 using AggregatorService.Services.Provider;
 using AggregatorService.Services.Statistics;
 using AggregatorService.Tests.Helpers;
